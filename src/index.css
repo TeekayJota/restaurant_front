@@ -1,0 +1,18 @@
+@import "tailwindcss";
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background-color: #f7f8fa;
+  color: #1e1e1e;
+  font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+a {
+  transition: color 0.2s ease, background-color 0.2s ease;
+}
+
+button {
+  transition: all 0.2s ease;
+}
