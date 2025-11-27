@@ -1,6 +1,10 @@
 import { Routes, Route, Link } from "react-router-dom";
 import WaiterView from "./components/WaiterView";
-import KitchenView from "./components/KitchenView"; // 1. Importa el nuevo componente
+import KitchenView from "./components/KitchenView";
+import NewOrderPage from "./components/NewOrderPage";
+import EditOrderPage from "./components/EditOrderPage";
+import ClientTableView from "./components/ClientTableView";
+import PublicMenu from "./components/PublicMenu";
 
 export default function AppRoutes() {
   return (
@@ -29,8 +33,18 @@ export default function AppRoutes() {
           </div>
         }
       />
+      
+      {/* Rutas de Mesero */}
       <Route path="/waiter" element={<WaiterView />} />
+      <Route path="/waiter/new" element={<NewOrderPage />} />
+      <Route path="/waiter/edit/:orderId" element={<EditOrderPage />} />
+
+      {/* Ruta de Cocina */}
       <Route path="/kitchen" element={<KitchenView />} />
+
+      {/* --- 2. NUEVA RUTA PÚBLICA (QR) --- */}
+      <Route path="/table/:code" element={<ClientTableView />} />
+      <Route path="/menu" element={<PublicMenu />} />
     </Routes>
   );
 }

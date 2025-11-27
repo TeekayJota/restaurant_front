@@ -1,151 +1,130 @@
 // src/components/KitchenView.tsx
+
 import { useState, useEffect } from "react";
-import { fetchOrders, updateOrderStatus } from "../api";
-
-// --- Tipos de Datos ---
-type OrderItem = {
-  id: number;
-  product_name: string;
-  notes: string;
-  selected_options: Record<string, unknown>;
-};
-
-type Order = {
-  id: number;
-  table_code: string;
-  status: "NEW" | "PREPARING" | "READY";
-  status_display: string;
-  created_at: string;
-  items: OrderItem[];
-};
+import { fetchOrders } from "../api";
+import type { Order } from "../types";
+import OrderCardKitchen from "./OrderCardKitchen";
+import ChangeRequestModal from "./ChangeRequestModal"; 
 
 // --- Componente de la Vista de Cocina ---
 export default function KitchenView() {
   const [orders, setOrders] = useState<Order[]>([]);
-
+  
+  const [selectedOrderForChange, setSelectedOrderForChange] = useState<Order | null>(null);
+  
   const loadOrders = async () => {
     try {
-      const fetchedOrders = await fetchOrders();
-      const activeOrders = fetchedOrders.filter(o => ['NEW', 'PREPARING'].includes(o.status));
-      setOrders(activeOrders);
+      const activeStatuses = ["NEW", "WAITER_EDITING", "PREPARING", "CHANGE_REQUESTED"];
+      const fetchedOrders = await fetchOrders(activeStatuses);
+      setOrders(fetchedOrders);
     } catch (error) {
       console.error("Error fetching orders:", error);
     }
   };
 
+  // useEffect con WebSocket
   useEffect(() => {
     loadOrders();
-    const intervalId = setInterval(loadOrders, 7000);
-    return () => clearInterval(intervalId);
-  }, []);
+    
+    // --- CORRECCIÓN DE ESTABILIDAD: Usar 127.0.0.1 ---
+    const wsUrl = "ws://127.0.0.1:8000/ws/kitchen/";
+    const socket = new WebSocket(wsUrl);
 
-  const handleStatusChange = async (orderId: number, newStatus: "PREPARING" | "READY") => {
-    try {
-      await updateOrderStatus(orderId, newStatus);
-      loadOrders();
-    } catch (error) {
-      console.error("Error updating status:", error)
-    }
-  }
+    socket.onopen = () => console.log("WebSocket: Conectado a la cocina.");
+    socket.onclose = () => console.warn("WebSocket: Desconectado de la cocina.");
+    socket.onerror = (error) => console.error("WebSocket (Cocina): Error:", error);
 
-  const newOrders = orders.filter((o) => o.status === "NEW");
-  const preparingOrders = orders.filter((o) => o.status === "PREPARING");
+    socket.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      const { type, order } = data as { type: string, order: Order };
+
+      if (type === "NEW_ORDER" || type === "STATUS_UPDATE") {
+        
+        if (order.status === "READY" || order.status === "PAID") {
+            setOrders((prev) => prev.filter((o) => o.id !== order.id));
+        } else {
+            setOrders((prev) => {
+                const existing = prev.find(o => o.id === order.id);
+                if (existing) {
+                    return prev.map((o) => (o.id === order.id ? order : o));
+                } else if (type === "NEW_ORDER") {
+                    return [order, ...prev];
+                }
+                return prev;
+            });
+        }
+      }
+    };
+
+    return () => socket.close();
+  }, []); 
+  
+  const handleOpenChangeModal = (order: Order) => {
+      setSelectedOrderForChange(order);
+  };
+  
+  const newOrders = orders.filter((o) => o.status === "NEW" || o.status === "WAITER_EDITING");
+  const preparingOrders = orders.filter((o) => o.status === "PREPARING" || o.status === "CHANGE_REQUESTED");
+  
+  const changeRequestedCount = preparingOrders.filter(o => o.status === "CHANGE_REQUESTED").length;
+  const editingCount = newOrders.filter(o => o.status === "WAITER_EDITING").length;
 
   return (
-    <div className="p-4"> {/* ✅ CAMBIO REALIZADO AQUÍ */}
-      <h1 className="text-3xl font-bold text-slate-800 mb-6">Panel de Cocina</h1>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        
-        {/* Columna: Nuevos Pedidos */}
-        <section>
-          <h2 className="text-xl font-bold text-blue-600 mb-4">Nuevos ({newOrders.length})</h2>
-          <div className="space-y-4">
-            {newOrders.map((order) => (
-              <div key={order.id} className="bg-white p-4 rounded-lg shadow-md">
-                <div className="flex justify-between items-center">
-                    <h3 className="text-lg font-bold">Mesa {order.table_code}</h3>
-                    <span className="text-sm text-slate-500">Pedido #{order.id}</span>
-                </div>
-                
-                <div className="border-t space-y-2 pt-3 mt-3">
-                  {order.items.map((item, index) => (
-                    <div key={`${item.id}-${index}`} className="p-2 bg-slate-50 rounded-md border border-slate-200">
-                      <p className="font-semibold text-slate-800">{item.product_name}</p>
-                      
-                      {item.notes && (
-                        <p className="text-sm text-amber-800 italic pl-2">↳ Nota: {item.notes}</p>
-                      )}
-
-                      <ul className="pl-5 text-sm text-slate-600 list-disc">
-                        {Object.entries(item.selected_options)
-                          .filter(([_, value]) => value && value !== "" && (!Array.isArray(value) || value.length > 0))
-                          .map(([key, value]) => (
-                            <li key={key}>
-                              <span className="capitalize">{key.replace(/_/g, " ")}:</span>{" "}
-                              <strong>{Array.isArray(value) ? value.join(", ") : String(value)}</strong>
-                            </li>
-                          ))
-                        }
-                      </ul>
-                    </div>
-                  ))}
-                </div>
-
-                <button 
-                  onClick={() => handleStatusChange(order.id, "PREPARING")}
-                  className="w-full mt-4 px-4 py-2 rounded-md bg-blue-500 text-white font-semibold hover:bg-blue-600 transition">
-                  Empezar Preparación
-                </button>
-              </div>
-            ))}
+    <>
+      <div className="p-4">
+        {/* --- AÑADIDO: Alerta General (para eliminar el warning de TS) --- */}
+        {(changeRequestedCount > 0 || editingCount > 0) && (
+          <div className="bg-red-500 text-white p-3 rounded-lg text-center mb-6 font-semibold animate-pulse">
+              ¡ATENCIÓN! Hay {changeRequestedCount > 0 && `${changeRequestedCount} SOLICITUD DE CAMBIO `}
+              {editingCount > 0 && `${editingCount} PEDIDO(S) EN EDICIÓN `}
+              PENDIENTE(S).
           </div>
-        </section>
+        )}
+        {/* ... (Encabezado y Alerta General sin cambios) ... */}
 
-        {/* Columna: En Preparación */}
-        <section>
-          <h2 className="text-xl font-bold text-amber-600 mb-4">En Preparación ({preparingOrders.length})</h2>
-          <div className="space-y-4">
-            {preparingOrders.map((order) => (
-              <div key={order.id} className="bg-white p-4 rounded-lg shadow-md">
-                <div className="flex justify-between items-center">
-                    <h3 className="text-lg font-bold">Mesa {order.table_code}</h3>
-                    <span className="text-sm text-slate-500">Pedido #{order.id}</span>
-                </div>
-                
-                <div className="border-t space-y-2 pt-3 mt-3">
-                  {order.items.map((item, index) => (
-                    <div key={`${item.id}-${index}`} className="p-2 bg-slate-50 rounded-md border border-slate-200">
-                      <p className="font-semibold text-slate-800">{item.product_name}</p>
-                      
-                      {item.notes && (
-                        <p className="text-sm text-amber-800 italic pl-2">↳ Nota: {item.notes}</p>
-                      )}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
+          
+          {/* Columna: Nuevos Pedidos */}
+          <section>
+            <h2 className="text-xl font-bold text-blue-600 mb-4">Nuevos ({newOrders.length})</h2>
+            <div className="space-y-4">
+              {newOrders
+                  .sort((a, b) => a.status.localeCompare(b.status)) 
+                  .map((order) => (
+                      <OrderCardKitchen 
+                        key={order.id} 
+                        order={order} 
+                        onOpenChangeModal={handleOpenChangeModal}
+                      />
+              ))}
+            </div>
+          </section>
 
-                      <ul className="pl-5 text-sm text-slate-600 list-disc">
-                        {Object.entries(item.selected_options)
-                          .filter(([_, value]) => value && value !== "" && (!Array.isArray(value) || value.length > 0))
-                          .map(([key, value]) => (
-                            <li key={key}>
-                              <span className="capitalize">{key.replace(/_/g, " ")}:</span>{" "}
-                              <strong>{Array.isArray(value) ? value.join(", ") : String(value)}</strong>
-                            </li>
-                          ))
-                        }
-                      </ul>
-                    </div>
-                  ))}
-                </div>
-
-                <button 
-                  onClick={() => handleStatusChange(order.id, "READY")}
-                  className="w-full mt-4 px-4 py-2 rounded-md bg-green-500 text-white font-semibold hover:bg-green-600 transition">
-                  Marcar como Listo
-                </button>
-              </div>
-            ))}
-          </div>
-        </section>
+          {/* Columna: En Preparación */}
+          <section>
+            <h2 className="text-xl font-bold text-amber-600 mb-4">En Preparación ({preparingOrders.length})</h2>
+            <div className="space-y-4">
+              {preparingOrders
+                  .sort((a, b) => a.status.localeCompare(b.status)) 
+                  .map((order) => (
+                      <OrderCardKitchen 
+                        key={order.id} 
+                        order={order} 
+                        onOpenChangeModal={handleOpenChangeModal}
+                      />
+              ))}
+            </div>
+          </section>
+        </div>
       </div>
-    </div>
+      
+      {/* RENDERIZAR EL MODAL DE CAMBIOS */}
+      <ChangeRequestModal
+        isOpen={selectedOrderForChange !== null}
+        onClose={() => setSelectedOrderForChange(null)}
+        order={selectedOrderForChange}
+        onStatusUpdated={loadOrders}
+      />
+    </>
   );
 }
