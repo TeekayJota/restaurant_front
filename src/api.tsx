@@ -198,3 +198,38 @@ export async function markTableAttended(tableId: number) {
   if (!res.ok) throw new Error("Error al marcar mesa como atendida");
   return await res.json();
 }
+
+// --- AUTENTICACIÓN (ADMIN) ---
+
+export async function loginUser(username: string, password: string) {
+  const res = await fetch(`${API_URL}/token/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password }),
+  });
+
+  if (!res.ok) {
+    throw new Error("Credenciales incorrectas");
+  }
+
+  // La respuesta trae { access: "...", refresh: "..." }
+  return await res.json();
+}
+
+export async function fetchDashboardStats() {
+  const token = localStorage.getItem("admin_token");
+  if (!token) throw new Error("No autenticado");
+
+  const res = await fetch(`${API_URL}/dashboard/stats/`, {
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json"
+    }
+  });
+
+  if (!res.ok) {
+    if (res.status === 401) throw new Error("Sesión expirada");
+    throw new Error("Error cargando reportes");
+  }
+  return await res.json();
+}

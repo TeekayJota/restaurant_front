@@ -5,6 +5,8 @@ import NewOrderPage from "./components/NewOrderPage";
 import EditOrderPage from "./components/EditOrderPage";
 import ClientTableView from "./components/ClientTableView";
 import PublicMenu from "./components/PublicMenu";
+import LoginPage from "./components/LoginPage";
+import AdminDashboard from "./components/AdminDashboard";
 
 export default function AppRoutes() {
   return (
@@ -45,6 +47,12 @@ export default function AppRoutes() {
       {/* --- 2. NUEVA RUTA PÚBLICA (QR) --- */}
       <Route path="/table/:code" element={<ClientTableView />} />
       <Route path="/menu" element={<PublicMenu />} />
+
+      {/* --- 2. RUTAS DE ADMIN --- */}
+      <Route path="/login" element={<LoginPage />} />
+      
+      {/* Admin Dashboard */}
+      <Route path="/admin/dashboard" element={<AdminDashboard />} />
     </Routes>
   );
 }
